@@ -1,0 +1,128 @@
+<%@ jet 
+imports="
+    org.talend.core.model.process.INode 
+    org.talend.core.model.metadata.IMetadataTable
+    org.talend.core.model.metadata.IMetadataColumn    
+    org.talend.core.model.process.ElementParameterParser
+    org.talend.core.model.process.IConnection
+    org.talend.designer.codegen.config.CodeGeneratorArgument
+    java.util.List
+    java.util.Map
+"
+%>
+
+<%
+CodeGeneratorArgument codeGenArgument = (CodeGeneratorArgument) argument;
+INode node = (INode)codeGenArgument.getArgument();
+String cid = node.getUniqueName();
+boolean strictMatch = ("true").equals(ElementParameterParser.getValue( node, "__STRICT_MATCH__" ));
+String incomingConnName = null;
+List<? extends IConnection> inConns = node.getIncomingConnections();
+if(inConns != null && inConns.size() > 0) {
+    IConnection inConn = inConns.get(0);
+    incomingConnName = inConn.getName();
+}
+List<IMetadataColumn> columnList = null;
+List<IMetadataTable> metadataTables = node.getMetadataList();
+if(metadataTables != null && metadataTables.size() > 0) {
+    IMetadataTable metadataTable = metadataTables.get(0);
+    columnList = metadataTable.getListColumns();
+}
+List<? extends IConnection> outgoingConns = node.getOutgoingConnections();
+
+final String TALEND_TYPE_STRING = "id_String";	
+
+if(incomingConnName != null && columnList != null && columnList.size() > 0) {
+
+	    
+    List<Map<String, String>> patterns = null;
+    
+    patterns = (List<Map<String,String>>)ElementParameterParser.getObjectValue(node,"__SUBSTITUTIONS__");
+    if(patterns != null && patterns.size() > 0) {
+     	int i = 0;
+        for(Map<String,String> pattern:patterns){
+        
+	      	i++;
+			String SEARCH_COLUMN = "";			
+			Integer split_nb_caractere = null;
+		
+			for(IMetadataColumn metadataColumn : columnList) {		
+				String columnLabel = metadataColumn.getLabel();
+				String inputcolumnLabel = pattern.get("INPUT_COLUMN");												
+				if( inputcolumnLabel!=null && inputcolumnLabel.equals(columnLabel) ){			
+					if( TALEND_TYPE_STRING.equals(metadataColumn.getTalendType()) ) {	
+						split_nb_caractere = metadataColumn.getLength();						
+						break;					
+					}					
+				}
+				
+			}
+			
+			if (split_nb_caractere!=null) {
+				
+			 	%>	
+								
+				int length_<%=cid %>_<%=i %> = <%=split_nb_caractere %>;
+				
+				<%
+				
+				// Decoupage
+				String split_right = pattern.get("SPLIT_RIGHT");
+				String split_left = pattern.get("SPLIT_LEFT");
+				
+				if( !(("true").equals(split_right) && ("true").equals(split_left)) ){
+								
+					if(("true").equals(split_right)) { 
+					 	
+					 	%>
+					 	 
+					 	// Decoupage a droite
+					 	 <%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%> = org.apache.commons.lang.StringUtils.left(<%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%>, length_<%=cid %>_<%=i %>);
+					 	 				 	 
+					 	<%
+					 		
+					} else {
+							
+						%>
+						
+						// Decoupage a gauche				
+					  <%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%> = org.apache.commons.lang.StringUtils.right(<%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%>, length_<%=cid %>_<%=i %>);
+						<% 
+					}
+					
+				}
+				
+				// Remplacement point-virgule				
+				String preplace = pattern.get("REPLACE");
+				
+				if( ("true").equals(preplace)){
+				
+					%>
+					
+					// Remplacement point-virgule	
+					if( <%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%> != null ){					
+						<%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%> = <%=incomingConnName%>.<%=pattern.get("INPUT_COLUMN")%>.replaceAll(";", " ");					
+					}
+				 
+					<%
+				}
+								
+			}		
+        }
+    }
+       
+    if(outgoingConns != null && outgoingConns.size() > 0) {
+        for(IConnection outgoingConn : outgoingConns) {
+            for(IMetadataColumn metadataColumn : columnList) {
+                %>                                                        
+                <%=outgoingConn.getName()%>.<%=metadataColumn.getLabel()%> = <%=incomingConnName%>.<%=metadataColumn.getLabel()%>;
+                <%
+            }
+        }
+    }
+    
+    %>
+    nb_line_<%=cid%>++;
+    <%
+}
+%>
